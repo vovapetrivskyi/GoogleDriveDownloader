@@ -1,3 +1,4 @@
+using GoogleDriveDownloader.Application.Batch;
 using GoogleDriveDownloader.Application.Logging;
 using GoogleDriveDownloader.Infrastructure.Authentication;
 
@@ -8,30 +9,41 @@ public partial class MainForm : Form
     private readonly ILoggingService _logging;
     private readonly OAuthConfigurationService _oauthConfiguration;
     private readonly GoogleAuthService _auth;
+    private readonly BatchDownloadService _batch;
     private readonly CancellationTokenSource _lifetime = new();
     private Action<LogEntry>? _onLogEntry;
     private Action<AuthenticationStatus>? _onAuthStatus;
     private CancellationTokenSource? _operationCancellation;
     private Task _pendingTask = Task.CompletedTask;
+    private bool _initialized;
     private bool _busy;
+    private bool _downloading;
     private bool _closing;
     private bool _canClose;
+    private int _batchGeneration;
 
-    public MainForm(ILoggingService logging, OAuthConfigurationService oauthConfiguration, GoogleAuthService auth)
+    public MainForm(ILoggingService logging, OAuthConfigurationService oauthConfiguration, GoogleAuthService auth,
+        BatchDownloadService batch)
     {
         _logging = logging;
         _oauthConfiguration = oauthConfiguration;
         _auth = auth;
+        _batch = batch;
         InitializeComponent();
     }
 
     protected override async void OnShown(EventArgs e)
     {
         base.OnShown(e);
+        if (_initialized || _closing) return;
+        _initialized = true;
+        // Progress захоплює WindowsFormsSynchronizationContext саме в UI-потоці після створення вікна.
         IProgress<LogEntry> logs = new Progress<LogEntry>(entry =>
         {
-            if (CanUpdate && entry.Context.Status == "FileLoggingUnavailable")
-                MessageBox.Show(this, entry.Message, "Файловий журнал", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            if (!CanUpdate) return;
+            AppendLog(entry);
+            if (entry.Context.Status == "FileLoggingUnavailable")
+                ShowMessage(entry.Message, "Файловий журнал", MessageBoxIcon.Warning);
         });
         IProgress<AuthenticationStatus> auth = new Progress<AuthenticationStatus>(_ =>
         {
@@ -46,31 +58,26 @@ public partial class MainForm : Form
         {
             await _oauthConfiguration.LoadAsync(token);
             if (_oauthConfiguration.Current.IsConfigured)
-            {
                 await _auth.RestoreAsync(token);
-            }
             else if (CanUpdate)
             {
-                MessageBox.Show(this,
-                    "Імпортуйте власний OAuth Client типу Desktop через «Імпортувати OAuth JSON» або заповніть GoogleOAuth:ClientId і ClientSecret у appsettings.json поруч із EXE та перезапустіть програму.",
-                    "Налаштування Google OAuth", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                const string message = "Імпортуйте власний OAuth Client типу Desktop через «Імпортувати OAuth JSON» або заповніть GoogleOAuth:ClientId і ClientSecret у appsettings.json поруч із EXE та перезапустіть програму.";
+                _batchStatusLabel.Text = "Для початку імпортуйте OAuth Desktop JSON і увійдіть через Google.";
+                _logging.Write(LogSeverity.Information, message, new LogContext(Status: "OAuthConfigurationRequired"));
             }
         });
     }
 
     private async void ImportOAuthButton_Click(object? sender, EventArgs e)
     {
-        using var dialog = new OpenFileDialog
-        {
-            Filter = "OAuth Desktop JSON (*.json)|*.json", CheckFileExists = true,
-            Title = "Оберіть OAuth Desktop JSON із Google Cloud Console"
-        };
-        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+        if (_busy || _closing) return;
+        var path = SelectPath(ChooseOAuthFile);
+        if (path is null) return;
         await RunOperationAsync(async token =>
         {
             // Спершу звільняємо in-memory credential; імпорт також змінює покоління кеша.
             await _auth.SignOutAsync(token);
-            await _oauthConfiguration.ImportAsync(dialog.FileName, token);
+            await _oauthConfiguration.ImportAsync(path, token);
         });
     }
 
@@ -83,47 +90,73 @@ public partial class MainForm : Form
     private async void ChangeAccountButton_Click(object? sender, EventArgs e) =>
         await RunOperationAsync(token => _auth.ChangeAccountAsync(token));
 
-    private void CancelAuthButton_Click(object? sender, EventArgs e) => _operationCancellation?.Cancel();
+    private void CancelButton_Click(object? sender, EventArgs e)
+    {
+        if (!_busy || _closing) return;
+        _cancelButton.Enabled = false;
+        _batchStatusLabel.Text = "Скасування… Очікування завершення операції та очищення ресурсів.";
+        _operationCancellation?.Cancel();
+    }
 
-    private Task RunOperationAsync(Func<CancellationToken, Task> operation)
+    private Task RunOperationAsync(Func<CancellationToken, Task> operation, bool downloading = false)
     {
         if (_busy || _closing) return Task.CompletedTask;
         _busy = true;
+        _downloading = downloading;
         _operationCancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
         UpdateControls();
-        _pendingTask = RunCoreAsync(operation, _operationCancellation);
+        _pendingTask = RunCoreAsync(operation, _operationCancellation, downloading);
         return _pendingTask;
     }
 
-    private async Task RunCoreAsync(Func<CancellationToken, Task> operation, CancellationTokenSource cancellation)
+    private async Task RunCoreAsync(Func<CancellationToken, Task> operation, CancellationTokenSource cancellation, bool downloading)
     {
         try
         {
             await operation(cancellation.Token);
+            if (!downloading && CanUpdate)
+                _batchStatusLabel.Text = _auth.IsAuthorized ? "Оберіть XLSX і директорію та почніть завантаження."
+                    : _oauthConfiguration.Current.IsConfigured ? "Увійдіть через Google, щоб завантажувати документи."
+                    : "Для початку імпортуйте OAuth Desktop JSON і увійдіть через Google.";
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
-            _logging.Write(LogSeverity.Information, "Операцію авторизації скасовано.", new LogContext(Status: "AuthorizationCancelled"));
+            var message = downloading ? "Скасовано." : "Операцію авторизації скасовано.";
+            _logging.Write(LogSeverity.Information, message, new LogContext(Status: downloading ? "BatchCancelled" : "AuthorizationCancelled"));
+            if (CanUpdate) _batchStatusLabel.Text = message;
         }
         catch (Exception exception) when (exception is AuthenticationException or AuthStorageException)
         {
             _logging.Write(LogSeverity.Warning, exception.Message, new LogContext(Status: "AuthorizationFailed"));
             if (CanUpdate)
-                MessageBox.Show(this, exception.Message, "Google OAuth", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            {
+                _batchStatusLabel.Text = exception.Message;
+                ShowMessage(exception.Message, "Google OAuth", MessageBoxIcon.Warning);
+            }
         }
         catch (Exception)
         {
             // Вихідний виняток SDK може містити токени або URL із конфіденційними параметрами.
-            const string message = "Не вдалося завершити операцію авторизації. Повторіть спробу або перевірте налаштування OAuth.";
-            _logging.Write(LogSeverity.Error, message, new LogContext(Status: "AuthorizationFailed"));
-            if (CanUpdate) MessageBox.Show(this, message, "Google OAuth", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            var message = downloading ? "Не вдалося завершити завантаження. Перевірте журнал і повторіть спробу."
+                : "Не вдалося завершити операцію авторизації. Повторіть спробу або перевірте налаштування OAuth.";
+            _logging.Write(LogSeverity.Error, message, new LogContext(Status: downloading ? "BatchFailed" : "AuthorizationFailed"));
+            if (CanUpdate)
+            {
+                _batchStatusLabel.Text = message;
+                ShowMessage(message, "Google Drive Downloader", MessageBoxIcon.Error);
+            }
         }
         finally
         {
             cancellation.Dispose();
             _operationCancellation = null;
             _busy = false;
-            if (CanUpdate) UpdateControls();
+            _downloading = false;
+            if (CanUpdate)
+            {
+                _progressBar.Style = ProgressBarStyle.Blocks;
+                UpdateControls();
+            }
         }
     }
 
@@ -137,11 +170,33 @@ public partial class MainForm : Form
             AuthenticationStatus.AuthorizationRequired => "Не авторизовано. Потрібен повторний вхід через Google.",
             _ => _oauthConfiguration.Current.IsConfigured ? "Не авторизовано. OAuth налаштовано." : "Не авторизовано. Імпортуйте OAuth Desktop JSON."
         };
-        _importOAuthButton.Enabled = !_busy;
-        _signInButton.Enabled = !_busy && _oauthConfiguration.Current.IsConfigured && !_auth.IsAuthorized;
-        _signOutButton.Enabled = !_busy && _auth.IsAuthorized;
-        _changeAccountButton.Enabled = !_busy && _oauthConfiguration.Current.IsConfigured;
-        _cancelAuthButton.Enabled = _busy;
+        var available = _initialized && !_busy && !_closing;
+        _importOAuthButton.Enabled = available;
+        _signInButton.Enabled = available && _oauthConfiguration.Current.IsConfigured && !_auth.IsAuthorized;
+        _signOutButton.Enabled = available && _auth.IsAuthorized;
+        _changeAccountButton.Enabled = available && _oauthConfiguration.Current.IsConfigured;
+        _workbookTextBox.Enabled = available;
+        _directoryTextBox.Enabled = available;
+        _browseWorkbookButton.Enabled = available;
+        _browseDirectoryButton.Enabled = available;
+        _startButton.Enabled = available && _auth.IsAuthorized && !string.IsNullOrWhiteSpace(_workbookTextBox.Text)
+            && !string.IsNullOrWhiteSpace(_directoryTextBox.Text);
+        _cancelButton.Enabled = _busy && !_closing && _operationCancellation?.IsCancellationRequested == false;
+    }
+
+    private void AppendLog(LogEntry entry)
+    {
+        var row = entry.Context.RowNumber is { } number ? $"Рядок {number}: " : "";
+        var document = entry.Context.DocumentName is { Length: > 0 } name ? name + " — " : "";
+        var http = entry.Context.HttpStatusCode is { } code ? $" (HTTP {code})" : "";
+        // Повідомлення вже очищено LoggingService. Переноси з назв не створюють підроблених рядків журналу.
+        var text = $"[{entry.Timestamp:HH:mm:ss}] {row}{document}{entry.Message}{http}".Replace('\r', ' ').Replace('\n', ' ');
+        _logBox.Select(_logBox.TextLength, 0);
+        _logBox.SelectionColor = entry.Level == LogSeverity.Error ? Color.Firebrick
+            : entry.Context.Status == "Succeeded" ? Color.ForestGreen : SystemColors.WindowText;
+        _logBox.AppendText(text + Environment.NewLine);
+        _logBox.SelectionColor = SystemColors.WindowText;
+        _logBox.ScrollToCaret();
     }
 
     protected override async void OnFormClosing(FormClosingEventArgs e)
@@ -157,18 +212,23 @@ public partial class MainForm : Form
         e.Cancel = true;
         if (_closing) return;
         _closing = true;
+        UpdateControls();
+        _batchStatusLabel.Text = "Завершення роботи… Очікування очищення ресурсів.";
         _lifetime.Cancel();
-        // Message loop продовжує працювати, доки SDK закриває loopback receiver і файлові операції.
+        // Message loop продовжує працювати, доки SDK та файловий сервіс звільняють свої ресурси.
         await _pendingTask;
         _canClose = true;
-        if (!IsDisposed) BeginInvoke(new Action(Close));
+        if (!IsDisposed && !Disposing && IsHandleCreated) BeginInvoke(new Action(Close));
     }
 
-    protected override void OnFormClosed(FormClosedEventArgs e)
+    protected override void Dispose(bool disposing)
     {
-        _logging.EntryLogged -= _onLogEntry;
-        _auth.StatusChanged -= _onAuthStatus;
-        _lifetime.Dispose();
-        base.OnFormClosed(e);
+        if (disposing)
+        {
+            _logging.EntryLogged -= _onLogEntry;
+            _auth.StatusChanged -= _onAuthStatus;
+            _lifetime.Dispose();
+        }
+        base.Dispose(disposing);
     }
 }

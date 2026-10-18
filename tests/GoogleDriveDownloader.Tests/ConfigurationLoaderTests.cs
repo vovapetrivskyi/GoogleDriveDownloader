@@ -118,16 +118,16 @@ public sealed class ConfigurationLoaderTests
     [Theory]
     [InlineData("ClientId")]
     [InlineData("ClientSecret")]
-    public async Task IncompleteCredentialsProduceSafeError(string key)
+    public async Task IncompleteFallbackCredentialsRemainUnconfiguredUntilImportIsResolved(string key)
     {
         using var directory = new TestDirectory();
         const string value = "synthetic-sensitive-value";
         await WriteConfiguration(directory, new JsonObject { ["GoogleOAuth"] = new JsonObject { [key] = value } });
 
-        var exception = await Assert.ThrowsAsync<ConfigurationException>(() => new ConfigurationLoader().LoadAsync(directory.Path));
+        var settings = await new ConfigurationLoader().LoadAsync(directory.Path);
 
-        Assert.Contains("обидва", exception.Message);
-        Assert.DoesNotContain(value, exception.ToString());
+        Assert.False(settings.GoogleOAuth.IsConfigured);
+        Assert.DoesNotContain(value, settings.ToString());
     }
 
     [Theory]

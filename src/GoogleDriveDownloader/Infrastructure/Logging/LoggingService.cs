@@ -33,6 +33,8 @@ public sealed class LoggingService : ILoggingService, IAsyncDisposable
 
     public event Action<LogEntry>? EntryLogged;
 
+    public void RegisterSensitiveValues(params string[] values) => _redactor.Register(values);
+
     public void Write(LogSeverity level, string message, LogContext? context = null, Exception? exception = null)
     {
         if (level < _settings.MinimumLevel)

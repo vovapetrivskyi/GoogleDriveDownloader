@@ -71,11 +71,6 @@ public sealed class ConfigurationLoader
                 }
             };
 
-            if (string.IsNullOrEmpty(settings.GoogleOAuth.ClientId) != string.IsNullOrEmpty(settings.GoogleOAuth.ClientSecret))
-            {
-                throw new ConfigurationException("У appsettings.json задайте обидва поля GoogleOAuth:ClientId і ClientSecret або залиште обидва порожніми.");
-            }
-
             cancellationToken.ThrowIfCancellationRequested();
             return settings;
         }

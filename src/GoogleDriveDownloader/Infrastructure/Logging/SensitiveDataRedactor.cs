@@ -15,20 +15,28 @@ internal sealed class SensitiveDataRedactor
         @"(?:\bya29\.|1//)[^\s""',;&<>]+",
         RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
 
-    private readonly string[] _knownSecrets;
+    private readonly object _sync = new();
+    private string[] _knownSecrets = [];
 
     public SensitiveDataRedactor(params string[] knownSecrets)
     {
-        _knownSecrets = knownSecrets.Where(value => !string.IsNullOrWhiteSpace(value))
-            .SelectMany(value => new[] { value, Uri.EscapeDataString(value) })
-            .Distinct(StringComparer.Ordinal)
-            .OrderByDescending(value => value.Length)
-            .ToArray();
+        Register(knownSecrets);
+    }
+
+    public void Register(params string[] values)
+    {
+        lock (_sync)
+        {
+            var secrets = values.Where(value => !string.IsNullOrWhiteSpace(value))
+                .SelectMany(value => new[] { value, Uri.EscapeDataString(value) });
+            Volatile.Write(ref _knownSecrets, _knownSecrets.Concat(secrets)
+                .Distinct(StringComparer.Ordinal).OrderByDescending(value => value.Length).ToArray());
+        }
     }
 
     public string Redact(string value)
     {
-        foreach (var secret in _knownSecrets)
+        foreach (var secret in Volatile.Read(ref _knownSecrets))
         {
             value = value.Replace(secret, Replacement, StringComparison.Ordinal);
         }

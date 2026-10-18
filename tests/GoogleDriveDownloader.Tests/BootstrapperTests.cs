@@ -1,3 +1,4 @@
+using GoogleDriveDownloader.Application.Batch;
 using GoogleDriveDownloader.Application.Configuration;
 using GoogleDriveDownloader.Application.Drive;
 using GoogleDriveDownloader.Application.Input;
@@ -20,6 +21,8 @@ public sealed class BootstrapperTests
         Assert.NotNull(services.GetRequiredService<ExcelReader>());
         Assert.NotNull(services.GetRequiredService<DriveLinkParser>());
         Assert.NotNull(services.GetRequiredService<FileNameResolver>());
+        Assert.Same(services.GetRequiredService<BatchDownloadService>(), services.GetRequiredService<BatchDownloadService>());
+        Assert.Equal(settings.Download.RetryCount, services.GetRequiredService<DownloadRetryPolicy>().MaximumRetries);
         Assert.Same(services.GetRequiredService<IFileStorageService>(), services.GetRequiredService<IFileStorageService>());
         Assert.Same(services.GetRequiredService<IGoogleDriveService>(), services.GetRequiredService<IGoogleDriveService>());
         var logging = services.GetRequiredService<ILoggingService>();

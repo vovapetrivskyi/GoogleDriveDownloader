@@ -1,3 +1,4 @@
+using GoogleDriveDownloader.Application.Batch;
 using GoogleDriveDownloader.Application.Configuration;
 using GoogleDriveDownloader.Application.Drive;
 using GoogleDriveDownloader.Application.Input;
@@ -21,6 +22,8 @@ public static class Bootstrapper
         services.AddSingleton<DriveLinkParser>();
         services.AddSingleton<ExcelReader>();
         services.AddSingleton<FileNameResolver>();
+        services.AddSingleton<DownloadRetryPolicy>();
+        services.AddSingleton<BatchDownloadService>();
         services.AddSingleton<IFileStorageService, FileStorageService>();
         services.AddSingleton<ILoggingService>(_ => new LoggingService(settings, userDataDirectory));
         services.AddSingleton(provider => new OAuthConfigurationService(settings,

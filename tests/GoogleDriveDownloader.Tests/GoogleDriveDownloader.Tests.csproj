@@ -17,5 +17,6 @@
   <ItemGroup>
     <ProjectReference Include="../../src/GoogleDriveDownloader/GoogleDriveDownloader.csproj" />
     <Using Include="Xunit" />
+    <None Include="../../samples/*.xlsx" Link="Samples/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

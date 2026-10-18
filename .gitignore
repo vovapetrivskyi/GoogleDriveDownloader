@@ -1,0 +1,59 @@
+# .NET і Visual Studio
+**/bin/
+**/obj/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.slnx.user
+
+# Локальні інструменти, кеші й результати перевірок
+.tools/
+.dotnet/
+.nuget/
+TestResults/
+**/TestResults/
+artifacts/
+dist/
+*.binlog
+*.trx
+*.coverage
+*.coveragexml
+
+# Локальна конфігурація та облікові дані
+.env
+.env.*
+!.env.example
+appsettings.local.json
+appsettings.*.local.json
+oauth-client*.json
+client_secret*.json
+client_secrets*.json
+credentials*.json
+service-account*.json
+service_account*.json
+secrets.json
+auth.dat
+auth.dat.*
+token.json
+tokens.json
+*.pfx
+*.p12
+*.pem
+*.key
+
+# Журнали й завантажені документи
+logs/
+downloads/
+*.log
+*.part
+*.tmp
+*.bak
+~$*
+
+# Редактори й Windows
+.idea/
+.vscode/
+Thumbs.db
+Desktop.ini

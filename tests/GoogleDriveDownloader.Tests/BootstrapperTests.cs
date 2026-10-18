@@ -1,4 +1,6 @@
 using GoogleDriveDownloader.Application.Configuration;
+using GoogleDriveDownloader.Application.Drive;
+using GoogleDriveDownloader.Application.Input;
 using GoogleDriveDownloader.Application.Logging;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -14,6 +16,9 @@ public sealed class BootstrapperTests
         var services = Bootstrapper.BuildServices(settings, directory.Path);
 
         Assert.Same(settings, services.GetRequiredService<AppSettings>());
+        Assert.NotNull(services.GetRequiredService<ExcelReader>());
+        Assert.NotNull(services.GetRequiredService<DriveLinkParser>());
+        Assert.Same(services.GetRequiredService<IGoogleDriveService>(), services.GetRequiredService<IGoogleDriveService>());
         var logging = services.GetRequiredService<ILoggingService>();
         Assert.Same(logging, services.GetRequiredService<ILoggingService>());
         logging.Write(LogSeverity.Information, "DI shutdown test");

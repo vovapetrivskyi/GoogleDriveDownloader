@@ -115,7 +115,7 @@ public sealed class GoogleAuthService : IConfigurableHttpClientInitializer, IHtt
 
     public Task<bool> HandleResponseAsync(HandleUnsuccessfulResponseArgs args)
     {
-        if (args.Response.StatusCode != HttpStatusCode.Unauthorized || !args.SupportsRetry)
+        if (args.Response.StatusCode != HttpStatusCode.Unauthorized)
         {
             return Task.FromResult(false);
         }
@@ -125,7 +125,8 @@ public sealed class GoogleAuthService : IConfigurableHttpClientInitializer, IHtt
             var session = RequireSession();
             ValidateRequestSession(args.Request, session);
             // Одне оновлення на запит: повторний 401 не запускає цикл refresh/retry.
-            if (args.Request.Options.TryGetValue(RefreshedKey, out var refreshed) && refreshed)
+            // Навіть останній дозволений SDK-запит має скинути відхилену сесію.
+            if (!args.SupportsRetry || (args.Request.Options.TryGetValue(RefreshedKey, out var refreshed) && refreshed))
             {
                 await ResetCoreAsync().ConfigureAwait(false);
                 SetStatus(AuthenticationStatus.AuthorizationRequired);

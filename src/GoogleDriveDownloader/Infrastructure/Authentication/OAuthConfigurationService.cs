@@ -13,6 +13,7 @@ public sealed class OAuthConfigurationService
     private readonly SemaphoreSlim _gate = new(1, 1);
     private GoogleOAuthSettings _current;
     private bool _loaded;
+    private volatile bool _authorizationResetFailed;
 
     public OAuthConfigurationService(AppSettings settings, ILoggingService logging, string? userDataDirectory = null)
     {
@@ -94,6 +95,7 @@ public sealed class OAuthConfigurationService
                 AuthFile.DeleteIfPresent(_tokenPath);
                 await AuthFile.WriteAtomicAsync(_clientPath, OAuthDesktopJson.Serialize(candidate), cancellationToken).ConfigureAwait(false);
                 PublishConfiguration(candidate, preserveUnchanged: false);
+                _authorizationResetFailed = false;
                 _logging.Write(LogSeverity.Information, "Імпортовано OAuth Desktop Client. Потрібна повторна авторизація.",
                     new LogContext(Status: "OAuthConfigurationImported"));
             }
@@ -110,6 +112,10 @@ public sealed class OAuthConfigurationService
 
     public DpapiTokenStore CreateTokenStore()
     {
+        if (_authorizationResetFailed)
+        {
+            throw new AuthStorageException("Попередній кеш не видалено. Повторіть вихід або зміну акаунта після відновлення доступу до auth.dat.");
+        }
         var configuration = Current;
         if (!Volatile.Read(ref _loaded) || !configuration.IsConfigured)
         {
@@ -121,6 +127,34 @@ public sealed class OAuthConfigurationService
         return new DpapiTokenStore(_tokenPath, configuration, _gate,
             () => ReferenceEquals(configuration, Current), _logging);
     }
+
+    public Task ResetAuthorizationAsync(CancellationToken cancellationToken = default) => Task.Run(async () =>
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            // Нова ідентичність знімка блокує пізні записи попередньої SDK-сесії навіть після виходу.
+            _authorizationResetFailed = true;
+            var current = Current;
+            Volatile.Write(ref _current, new GoogleOAuthSettings
+            {
+                ClientId = current.ClientId, ClientSecret = current.ClientSecret, Scope = current.Scope
+            });
+            try
+            {
+                AuthFile.DeleteIfPresent(_tokenPath);
+                _authorizationResetFailed = false;
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                throw new AuthStorageException("Сесію завершено, але локальний кеш не видалено. Перевірте права доступу до auth.dat перед наступним входом.");
+            }
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }, cancellationToken);
 
     private void PublishConfiguration(GoogleOAuthSettings candidate, bool preserveUnchanged)
     {

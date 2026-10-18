@@ -16,6 +16,8 @@ public static class Bootstrapper
         services.AddSingleton<ILoggingService>(_ => new LoggingService(settings, userDataDirectory));
         services.AddSingleton(provider => new OAuthConfigurationService(settings,
             provider.GetRequiredService<ILoggingService>(), userDataDirectory));
+        services.AddSingleton(provider => new GoogleAuthService(settings,
+            provider.GetRequiredService<OAuthConfigurationService>(), provider.GetRequiredService<ILoggingService>()));
         services.AddTransient<MainForm>();
         return services.BuildServiceProvider(new ServiceProviderOptions
         {

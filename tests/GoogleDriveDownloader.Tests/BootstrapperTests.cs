@@ -2,6 +2,7 @@ using GoogleDriveDownloader.Application.Configuration;
 using GoogleDriveDownloader.Application.Drive;
 using GoogleDriveDownloader.Application.Input;
 using GoogleDriveDownloader.Application.Logging;
+using GoogleDriveDownloader.Application.Storage;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace GoogleDriveDownloader.Tests;
@@ -18,6 +19,8 @@ public sealed class BootstrapperTests
         Assert.Same(settings, services.GetRequiredService<AppSettings>());
         Assert.NotNull(services.GetRequiredService<ExcelReader>());
         Assert.NotNull(services.GetRequiredService<DriveLinkParser>());
+        Assert.NotNull(services.GetRequiredService<FileNameResolver>());
+        Assert.Same(services.GetRequiredService<IFileStorageService>(), services.GetRequiredService<IFileStorageService>());
         Assert.Same(services.GetRequiredService<IGoogleDriveService>(), services.GetRequiredService<IGoogleDriveService>());
         var logging = services.GetRequiredService<ILoggingService>();
         Assert.Same(logging, services.GetRequiredService<ILoggingService>());

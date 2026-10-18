@@ -2,9 +2,11 @@ using GoogleDriveDownloader.Application.Configuration;
 using GoogleDriveDownloader.Application.Drive;
 using GoogleDriveDownloader.Application.Input;
 using GoogleDriveDownloader.Application.Logging;
+using GoogleDriveDownloader.Application.Storage;
 using GoogleDriveDownloader.Infrastructure.Logging;
 using GoogleDriveDownloader.Infrastructure.Authentication;
 using GoogleDriveDownloader.Infrastructure.Drive;
+using GoogleDriveDownloader.Infrastructure.Storage;
 using GoogleDriveDownloader.Presentation;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -18,6 +20,8 @@ public static class Bootstrapper
         services.AddSingleton(settings);
         services.AddSingleton<DriveLinkParser>();
         services.AddSingleton<ExcelReader>();
+        services.AddSingleton<FileNameResolver>();
+        services.AddSingleton<IFileStorageService, FileStorageService>();
         services.AddSingleton<ILoggingService>(_ => new LoggingService(settings, userDataDirectory));
         services.AddSingleton(provider => new OAuthConfigurationService(settings,
             provider.GetRequiredService<ILoggingService>(), userDataDirectory));

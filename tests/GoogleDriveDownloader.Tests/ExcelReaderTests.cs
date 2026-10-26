@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Xml.Linq;
 using ClosedXML.Excel;
+using GoogleDriveDownloader.Application.Configuration;
 using GoogleDriveDownloader.Application.Input;
 
 namespace GoogleDriveDownloader.Tests;
@@ -10,6 +11,77 @@ public sealed class ExcelReaderTests
 {
     private const string Url = "https://drive.google.com/file/d/FILE_ID_1/view";
     private readonly ExcelReader _reader = new(new DriveLinkParser());
+
+    [Theory]
+    [InlineData("Document Name", "Drive URL")]
+    [InlineData("Документ", "Адреса")]
+    [InlineData("Посилання", "Назва")]
+    public async Task ConfiguredHeadersDetermineColumnRolesAndPreserveHyperlinkHandling(string nameHeader, string linkHeader)
+    {
+        using var directory = new TestDirectory();
+        var path = Save(directory, sheet =>
+        {
+            sheet.Cell("A1").Value = " " + linkHeader.ToLowerInvariant() + " ";
+            sheet.Cell("C1").Value = nameHeader.ToUpperInvariant();
+            sheet.Cell("A2").Value = "Відкрити";
+            sheet.Cell("A2").SetHyperlink(new XLHyperlink(Url));
+            sheet.Cell("C2").Value = "Звіт";
+        });
+        var reader = new ExcelReader(new DriveLinkParser(), new AppSettings
+        {
+            Excel = new ExcelSettings { NameColumnHeader = " " + nameHeader + " ", LinkColumnHeader = linkHeader }
+        });
+        var row = Assert.Single((await reader.ReadAsync(path)).Rows);
+        Assert.True(row.IsValid);
+        Assert.Equal("Звіт", row.DocumentName);
+        Assert.Equal(new DriveLink("FILE_ID_1"), row.Link);
+    }
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("duplicate")]
+    [InlineData("empty")]
+    public async Task WorkbookErrorsReferToConfiguredHeaders(string failure)
+    {
+        using var directory = new TestDirectory();
+        var path = Save(directory, sheet =>
+        {
+            if (failure == "empty") return;
+            sheet.Cell("A1").Value = "Title";
+            sheet.Cell("B1").Value = failure == "duplicate" ? "TITLE" : "Посилання";
+        });
+        var reader = new ExcelReader(new DriveLinkParser(), new AppSettings
+        {
+            Excel = new ExcelSettings { NameColumnHeader = "Title", LinkColumnHeader = "URL" }
+        });
+        var error = await Assert.ThrowsAsync<ExcelReadException>(() => reader.ReadAsync(path));
+        Assert.Contains("Title", error.Message);
+        if (failure != "duplicate") Assert.Contains("URL", error.Message);
+        Assert.DoesNotContain("«Посилання»", error.Message);
+    }
+
+    [Fact]
+    public async Task RowValidationUsesConfiguredColumnNamesWithoutDuplicatingErrors()
+    {
+        using var directory = new TestDirectory();
+        var path = Save(directory, sheet =>
+        {
+            sheet.Cell("A1").Value = "Title";
+            sheet.Cell("B1").Value = "URL";
+            sheet.Cell("A2").FormulaA1 = "1+1";
+            sheet.Cell("B2").Value = "Внутрішнє посилання";
+            sheet.Cell("B2").SetHyperlink(new XLHyperlink("#Лист1!A1"));
+        });
+        var reader = new ExcelReader(new DriveLinkParser(), new AppSettings
+        {
+            Excel = new ExcelSettings { NameColumnHeader = "Title", LinkColumnHeader = "URL" }
+        });
+        var row = Assert.Single((await reader.ReadAsync(path)).Rows);
+        Assert.False(row.IsValid);
+        Assert.Equal(2, row.Errors.Count);
+        Assert.Contains(row.Errors, error => error.Contains("«Title»", StringComparison.Ordinal));
+        Assert.Contains(row.Errors, error => error.Contains("«URL»", StringComparison.Ordinal));
+    }
 
     [Theory]
     [InlineData(false)]

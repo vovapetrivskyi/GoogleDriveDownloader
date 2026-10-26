@@ -4,10 +4,17 @@ namespace GoogleDriveDownloader.Application.Configuration;
 
 public sealed class AppSettings
 {
+    public ExcelSettings Excel { get; init; } = new();
     public GoogleOAuthSettings GoogleOAuth { get; init; } = new();
     public DownloadSettings Download { get; init; } = new();
     public ExportSettings Export { get; init; } = new();
     public LoggingSettings Logging { get; init; } = new();
+}
+
+public sealed class ExcelSettings
+{
+    public string NameColumnHeader { get; init; } = "Назва";
+    public string LinkColumnHeader { get; init; } = "Посилання";
 }
 
 public sealed class GoogleOAuthSettings

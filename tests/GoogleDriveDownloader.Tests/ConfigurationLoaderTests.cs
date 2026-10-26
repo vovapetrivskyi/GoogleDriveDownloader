@@ -8,9 +8,15 @@ namespace GoogleDriveDownloader.Tests;
 public sealed class ConfigurationLoaderTests
 {
     [Fact]
-    public async Task ShippedConfigurationIsExternalAndContainsEmptyCredentials()
+    public async Task ExplicitEmptyCredentialsAreValidWithDefaultSettings()
     {
-        var settings = await new ConfigurationLoader().LoadAsync();
+        // Тести не повинні читати особисті credentials із локальної конфігурації розробника.
+        using var directory = new TestDirectory();
+        await WriteConfiguration(directory, new JsonObject
+        {
+            ["GoogleOAuth"] = new JsonObject { ["ClientId"] = "", ["ClientSecret"] = "" }
+        });
+        var settings = await new ConfigurationLoader().LoadAsync(directory.Path);
 
         Assert.Empty(settings.GoogleOAuth.ClientId);
         Assert.Empty(settings.GoogleOAuth.ClientSecret);
@@ -19,6 +25,8 @@ public sealed class ConfigurationLoaderTests
         Assert.Equal(1, settings.Download.MaxConcurrentDownloads);
         Assert.Equal(3, settings.Download.RetryCount);
         Assert.Equal(30, settings.Logging.RetentionDays);
+        Assert.Equal("Назва", settings.Excel.NameColumnHeader);
+        Assert.Equal("Посилання", settings.Excel.LinkColumnHeader);
     }
 
     [Fact]
@@ -36,6 +44,8 @@ public sealed class ConfigurationLoaderTests
         Assert.Equal(ExportSettings.Docx, settings.Export.DocsMimeType);
         Assert.Equal(ExportSettings.Xlsx, settings.Export.SheetsMimeType);
         Assert.Equal(ExportSettings.Pptx, settings.Export.SlidesMimeType);
+        Assert.Equal("Назва", settings.Excel.NameColumnHeader);
+        Assert.Equal("Посилання", settings.Excel.LinkColumnHeader);
     }
 
     [Fact]
@@ -45,6 +55,7 @@ public sealed class ConfigurationLoaderTests
         var json = JsonNode.Parse("""
             {
               "GoogleOAuth": { "ClientId": "synthetic-client", "ClientSecret": "synthetic-secret" },
+              "Excel": { "NameColumnHeader": " Document Name ", "LinkColumnHeader": " Drive URL " },
               "Download": { "RetryCount": 0, "RequestTimeoutSeconds": 120, "AuthorizationTimeoutSeconds": 600 },
               "Logging": { "MinimumLevel": "warning", "RetentionDays": 7 }
             }
@@ -60,6 +71,8 @@ public sealed class ConfigurationLoaderTests
         Assert.Equal(600, settings.Download.AuthorizationTimeoutSeconds);
         Assert.Equal(LogSeverity.Warning, settings.Logging.MinimumLevel);
         Assert.Equal(7, settings.Logging.RetentionDays);
+        Assert.Equal("Document Name", settings.Excel.NameColumnHeader);
+        Assert.Equal("Drive URL", settings.Excel.LinkColumnHeader);
     }
 
     [Theory]
@@ -78,6 +91,8 @@ public sealed class ConfigurationLoaderTests
     [InlineData("Logging", "MinimumLevel", "2")]
     [InlineData("Logging", "RetentionDays", "0")]
     [InlineData("Logging", "RetentionDays", "3651")]
+    [InlineData("Excel", "NameColumnHeader", "")]
+    [InlineData("Excel", "LinkColumnHeader", "   ")]
     public async Task RejectsUnsupportedOrInvalidSetting(string section, string key, string value)
     {
         using var directory = new TestDirectory();
@@ -104,6 +119,8 @@ public sealed class ConfigurationLoaderTests
     [InlineData("{\"Logging\":\"synthetic-wrong-shape\"}")]
     [InlineData("{\"Download\":[{\"RetryCount\":1}]}")]
     [InlineData("{\"GoogleOAuth\":true}")]
+    [InlineData("{\"Excel\":\"synthetic-wrong-shape\"}")]
+    [InlineData("{\"Excel\":[{\"NameColumnHeader\":\"Title\"}]}")]
     public async Task RejectsSectionWithWrongShape(string json)
     {
         using var directory = new TestDirectory();
@@ -178,6 +195,36 @@ public sealed class ConfigurationLoaderTests
 
         Assert.Equal(original, await File.ReadAllBytesAsync(path));
         using var exclusive = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+    }
+
+    [Theory]
+    [InlineData("Title", "Title")]
+    [InlineData("Title", " title ")]
+    [InlineData(" назва ", "НАЗВА")]
+    public async Task RejectsEquivalentColumnHeaders(string name, string link)
+    {
+        using var directory = new TestDirectory();
+        await WriteConfiguration(directory, new JsonObject
+        {
+            ["Excel"] = new JsonObject { ["NameColumnHeader"] = name, ["LinkColumnHeader"] = link }
+        });
+        var exception = await Assert.ThrowsAsync<ConfigurationException>(() => new ConfigurationLoader().LoadAsync(directory.Path));
+        Assert.Contains("Excel:LinkColumnHeader", exception.Message);
+    }
+
+    [Theory]
+    [InlineData("NameColumnHeader")]
+    [InlineData("LinkColumnHeader")]
+    public async Task RejectsNonScalarColumnHeaderWithoutExposingItsValue(string key)
+    {
+        using var directory = new TestDirectory();
+        await WriteConfiguration(directory, new JsonObject
+        {
+            ["Excel"] = new JsonObject { [key] = new JsonArray("synthetic-sensitive-header") }
+        });
+        var exception = await Assert.ThrowsAsync<ConfigurationException>(() => new ConfigurationLoader().LoadAsync(directory.Path));
+        Assert.Contains("Excel:" + key, exception.Message);
+        Assert.DoesNotContain("synthetic-sensitive-header", exception.ToString());
     }
 
     private static Task WriteConfiguration(TestDirectory directory, JsonObject configuration) =>

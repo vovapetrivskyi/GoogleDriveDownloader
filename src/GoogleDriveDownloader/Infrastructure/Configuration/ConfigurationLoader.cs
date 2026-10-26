@@ -24,7 +24,7 @@ public sealed class ConfigurationLoader
                 .Build();
             using var configurationLifetime = configuration as IDisposable;
 
-            foreach (var name in new[] { "GoogleOAuth", "Download", "Export", "Logging" })
+            foreach (var name in new[] { "Excel", "GoogleOAuth", "Download", "Export", "Logging" })
             {
                 var section = configuration.GetSection(name);
                 if (section.Value is not null || section.GetChildren().Any(child => int.TryParse(child.Key, out _)))
@@ -42,8 +42,19 @@ public sealed class ConfigurationLoader
                 _ => throw InvalidSetting("Logging:MinimumLevel", "Information, Warning або Error")
             };
 
+            var excelDefaults = new ExcelSettings();
+            var nameHeader = ReadText(configuration, "Excel:NameColumnHeader", excelDefaults.NameColumnHeader);
+            var linkHeader = ReadText(configuration, "Excel:LinkColumnHeader", excelDefaults.LinkColumnHeader);
+            if (string.IsNullOrWhiteSpace(nameHeader))
+                throw InvalidSetting("Excel:NameColumnHeader", "непорожня назва заголовка");
+            if (string.IsNullOrWhiteSpace(linkHeader))
+                throw InvalidSetting("Excel:LinkColumnHeader", "непорожня назва заголовка");
+            if (nameHeader.Equals(linkHeader, StringComparison.OrdinalIgnoreCase))
+                throw InvalidSetting("Excel:LinkColumnHeader", "назва, відмінна від Excel:NameColumnHeader без урахування регістру");
+
             var settings = new AppSettings
             {
+                Excel = new ExcelSettings { NameColumnHeader = nameHeader, LinkColumnHeader = linkHeader },
                 GoogleOAuth = new GoogleOAuthSettings
                 {
                     ClientId = ReadText(configuration, "GoogleOAuth:ClientId", ""),

@@ -1,10 +1,25 @@
 using System.Globalization;
 using ClosedXML.Excel;
+using GoogleDriveDownloader.Application.Configuration;
 
 namespace GoogleDriveDownloader.Application.Input;
 
-public sealed class ExcelReader(DriveLinkParser linkParser)
+public sealed class ExcelReader
 {
+    private readonly DriveLinkParser _linkParser;
+    private readonly string _nameHeader;
+    private readonly string _linkHeader;
+
+    public ExcelReader(DriveLinkParser linkParser, AppSettings? settings = null)
+    {
+        _linkParser = linkParser;
+        var columns = settings?.Excel ?? new ExcelSettings();
+        _nameHeader = columns.NameColumnHeader.Trim();
+        _linkHeader = columns.LinkColumnHeader.Trim();
+        if (_nameHeader.Length == 0 || _linkHeader.Length == 0 || _nameHeader.Equals(_linkHeader, StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Назви стовпців Excel мають бути непорожніми й різними без урахування регістру.", nameof(settings));
+    }
+
     public Task<ExcelReadResult> ReadAsync(string path, CancellationToken cancellationToken = default) =>
         Task.Run(() => ReadCore(path, cancellationToken), cancellationToken);
 
@@ -37,7 +52,7 @@ public sealed class ExcelReader(DriveLinkParser linkParser)
                 if (hyperlink.Cell is { } cell) rowNumbers.Add(cell.Address.RowNumber);
             }
             if (rowNumbers.Count == 0)
-                throw new ExcelReadException("Перший аркуш порожній. Додайте заголовки «Назва» та «Посилання».");
+                throw new ExcelReadException($"Перший аркуш порожній. Додайте заголовки «{_nameHeader}» та «{_linkHeader}».");
 
             var headerRow = rowNumbers.Min;
             var nameColumn = 0;
@@ -48,19 +63,19 @@ public sealed class ExcelReader(DriveLinkParser linkParser)
                 var value = cell.CachedValue;
                 if (!value.IsText) continue;
                 var header = value.GetText().Trim();
-                if (header.Equals("Назва", StringComparison.OrdinalIgnoreCase))
+                if (header.Equals(_nameHeader, StringComparison.OrdinalIgnoreCase))
                 {
-                    if (nameColumn != 0) throw new ExcelReadException($"Рядок {headerRow}: заголовок «Назва» дублюється.");
+                    if (nameColumn != 0) throw new ExcelReadException($"Рядок {headerRow}: заголовок «{_nameHeader}» дублюється.");
                     nameColumn = cell.Address.ColumnNumber;
                 }
-                if (header.Equals("Посилання", StringComparison.OrdinalIgnoreCase))
+                if (header.Equals(_linkHeader, StringComparison.OrdinalIgnoreCase))
                 {
-                    if (linkColumn != 0) throw new ExcelReadException($"Рядок {headerRow}: заголовок «Посилання» дублюється.");
+                    if (linkColumn != 0) throw new ExcelReadException($"Рядок {headerRow}: заголовок «{_linkHeader}» дублюється.");
                     linkColumn = cell.Address.ColumnNumber;
                 }
             }
             if (nameColumn == 0 || linkColumn == 0)
-                throw new ExcelReadException($"Рядок {headerRow}: потрібні унікальні заголовки «Назва» та «Посилання».");
+                throw new ExcelReadException($"Рядок {headerRow}: потрібні унікальні заголовки «{_nameHeader}» та «{_linkHeader}».");
 
             var rows = new List<InputRow>();
             foreach (var rowNumber in rowNumbers)
@@ -68,30 +83,30 @@ public sealed class ExcelReader(DriveLinkParser linkParser)
                 cancellationToken.ThrowIfCancellationRequested();
                 if (rowNumber == headerRow) continue;
                 var errors = new List<string>();
-                var name = ReadText(worksheet.Cell(rowNumber, nameColumn), "Назва", errors);
+                var name = ReadText(worksheet.Cell(rowNumber, nameColumn), _nameHeader, errors);
                 var linkCell = worksheet.Cell(rowNumber, linkColumn);
                 string? url;
                 if (linkCell.HasHyperlink)
                 {
                     var hyperlink = linkCell.GetHyperlink();
                     url = hyperlink.IsExternal ? hyperlink.ExternalAddress?.OriginalString : null;
-                    if (url is null) errors.Add("«Посилання»: потрібне зовнішнє HTTPS-гіперпосилання.");
+                    if (url is null) errors.Add($"«{_linkHeader}»: потрібне зовнішнє HTTPS-гіперпосилання.");
                 }
                 else
                 {
                     var errorCount = errors.Count;
-                    url = ReadText(linkCell, "Посилання", errors);
+                    url = ReadText(linkCell, _linkHeader, errors);
                     if (errors.Count != errorCount) url = null;
                 }
 
                 DriveLink? link = null;
                 if (url is not null)
                 {
-                    try { link = linkParser.Parse(url); }
+                    try { link = _linkParser.Parse(url); }
                     catch (DriveLinkException exception) { errors.Add(exception.Message); }
                 }
-                if (name.Length == 0 && !errors.Any(error => error.StartsWith("«Назва»", StringComparison.Ordinal)))
-                    errors.Add("«Назва»: значення порожнє.");
+                if (name.Length == 0 && !errors.Any(error => error.StartsWith($"«{_nameHeader}»", StringComparison.Ordinal)))
+                    errors.Add($"«{_nameHeader}»: значення порожнє.");
                 var rowErrors = errors.Select(error => $"Рядок {rowNumber}: {error}").ToList().AsReadOnly();
                 rows.Add(new InputRow(rowNumber, name, link, rowErrors));
             }

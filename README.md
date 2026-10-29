@@ -419,14 +419,21 @@ DI-сервіс `Application.Batch.BatchDownloadService` надає `RunAsync(wo
 
 ## Публікація для Windows x64
 
-Публікація та її PowerShell-скрипт належать до етапу 11 й у поточному стані **не виконані**. Нижче команда для майбутньої перевірки розробником, а не підтвердження готового дистрибутива:
+Публікація та її PowerShell-скрипт належать до етапу 11 й у межах попередніх етапів **не виконувалися**. Для Self-Contained Single File збірки Windows x64 виконайте в PowerShell із кореня репозиторію:
 
 ```powershell
-dotnet publish src/GoogleDriveDownloader/GoogleDriveDownloader.csproj `
-  -c Release -r win-x64 --self-contained true `
-  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
-  -p:PublishTrimmed=false -p:PublishAot=false -o dist/win-x64
+dotnet publish .\src\GoogleDriveDownloader\GoogleDriveDownloader.csproj `
+  -c Release `
+  -r win-x64 `
+  --self-contained true `
+  -p:PublishSingleFile=true `
+  -p:IncludeNativeLibrariesForSelfExtract=true `
+  -p:PublishTrimmed=false `
+  -p:PublishAot=false `
+  -o .\dist\win-x64
 ```
+
+Результат публікації розташовуватиметься в `dist\win-x64`. Установлений .NET на цільовому комп'ютері не потрібен. Зовнішній `appsettings.json` потрібно залишити поруч із EXE.
 
 Потрібні Self-Contained і Single File для `win-x64`, без trimming/AOT; native libraries можуть розпаковуватися під час запуску. `appsettings.json` уже позначений як зовнішній: перевірте його наявність поряд із EXE і порожні credentials, додайте README. Не включайте токени, логи, приватні документи або тестову збірку. Результат треба окремо перевірити на Windows без установленого .NET/Office, зокрема коли директорія EXE недоступна для запису. [Механізм Single File у .NET](https://learn.microsoft.com/en-us/dotnet/core/deploying/single-file/overview).
 

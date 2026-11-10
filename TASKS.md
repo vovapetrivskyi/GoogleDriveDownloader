@@ -484,3 +484,21 @@ ExcelReader отримує AppSettings через наявний DI-контей
 **Змінені файли:** src/GoogleDriveDownloader/Application/Configuration/AppSettings.cs, src/GoogleDriveDownloader/Infrastructure/Configuration/ConfigurationLoader.cs, src/GoogleDriveDownloader/Application/Input/ExcelReader.cs, src/GoogleDriveDownloader/appsettings.json; tests/GoogleDriveDownloader.Tests/ConfigurationLoaderTests.cs, ExcelReaderTests.cs, BootstrapperTests.cs; README.md, TASKS.md. Нових файлів і залежностей немає. SPEC.md та AGENTS.md не змінено.
 
 **Обмеження:** зміни Excel-налаштувань застосовуються після перезапуску. Реальні Google-операції й майбутню публікацію це завдання не перевіряло.
+
+### Ліцензія MIT і повідомлення залежностей — 10.11.2026
+
+**Статус:** завершено за окремим запитом користувача; загальне приймання етапу 11 не виконувалося.
+
+Додано LICENSE з повним текстом MIT і Copyright (c) 2026 VP. У README зазначено ліцензію власного коду/документації та обов'язок передавати ліцензійні файли з дистрибутивом. У production-проєкті додано PackageLicenseExpression=MIT, copyright metadata й автоматичне копіювання LICENSE та THIRD-PARTY-NOTICES.txt до build/publish output; обидва файли мають ExcludeFromSingleFile=true.
+
+THIRD-PARTY-NOTICES.txt охоплює всі 25 прямих/транзитивних виробничих NuGet-пакетів із поточного lock-файла. Інвентар звірено з наявним Release win-x64 .deps.json. Для пакетів без ліцензійного файла в nupkg отримано тексти з офіційних репозиторіїв за комітами, зазначеними в metadata; для ExcelNumberFormat використано коміт тега v1.1.0. Збережено атрибуцію, повні ліцензії, джерела та SHA-256 оригінальних текстів. Нормалізовано лише переноси рядків і кінцеві пробіли.
+
+Для наявного Self-Contained враховано Microsoft.NETCore.App.Runtime.win-x64, Microsoft.WindowsDesktop.App.Runtime.win-x64 та native apphost версії 10.0.13. Runtime-версії підтверджено Release runtimeconfig/deps; .NET/Windows Desktop source commit — 4099f83977f4d29604a9aeb971fb0a7bc1d5f699. Окремо включено повний Microsoft .NET Library License для Windows product binaries: MIT source/package declaration не замінює ці умови. Чотири різні upstream notice-документи (Runtime/Microsoft library packages, System.Management, WinForms, WPF) збережено повністю; дублікати одного тексту згруповано з переліком компонентів. SDK і тестові пакети не постачаються й до інвентарю застосунку не входять.
+
+**Перевірки:** dotnet restore --locked-mode — успішно; dotnet build --no-restore — 0 помилок, 0 попереджень; dotnet test --no-build --no-restore — **455 пройдено, 0 помилкових, 0 пропущених**. Тести виконано з Windows-профілем для DPAPI/WinForms, без Google. Додатково перевірено покриття кожного NuGet ID/версії, наявність оригінальних ліцензійних текстів і notices, MIT copyright VP, metadata зовнішнього publish та ідентичність за SHA-256 файлів у build-output і наявному dist/win-x64. git diff --check успішний для змін цього завдання.
+
+**Створені файли:** LICENSE, THIRD-PARTY-NOTICES.txt. Їхні копії також додано до наявного dist/win-x64, який виключено з Git.
+
+**Змінені файли:** README.md, TASKS.md, src/GoogleDriveDownloader/GoogleDriveDownloader.csproj. Наявну користувацьку зміну packages.lock.json збережено байт у байт (перевірено SHA-256); залежності не змінювалися. Одноразові інструменти/завантажені ліцензійні джерела залишаються у виключеному .tools, вони не потрібні для роботи програми.
+
+**Обмеження:** новий publish і перевірка EXE на чистій Windows у цьому завданні не виконувалися; до вже наявного dist скопійовано лише два юридичні файли. Після зміни версій залежностей або вбудованого .NET треба оновлювати notices. Підготовлені матеріали не підтверджують Google OAuth verification і не закривають невиконані ручні сценарії.

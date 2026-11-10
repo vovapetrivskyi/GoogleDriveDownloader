@@ -4,6 +4,14 @@ Windows-застосунок для завантаження приватних 
 
 Реалізовано етапи 1–10: сервіси завантаження, OAuth/DPAPI, WinForms, локальні перевірки та документацію. У головному вікні можна імпортувати credentials, увійти, змінити акаунт, обрати XLSX і директорію, запустити та скасувати завантаження, переглянути прогрес і журнал. Ручні сценарії з реальним Google залишаються відкритими; Self-Contained Single File, скрипт публікації та приймання дистрибутива належать до нерозпочатого етапу 11.
 
+## Ліцензія
+
+Власний код і документація Google Drive Downloader поширюються за [ліцензією MIT](LICENSE). **Copyright (c) 2026 VP.** Ліцензія дозволяє використання, зміну й поширення, включно з комерційним, за умови збереження її тексту та повідомлення про авторські права; програму надано без гарантій відповідно до LICENSE.
+
+Сторонні компоненти зберігають власні ліцензії. [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt) містить версії та атрибуцію всіх 25 виробничих NuGet-пакетів, повні тексти їхніх ліцензій і notices, а також матеріали для .NET Runtime, Windows Desktop Runtime та apphost версії 10.0.13, використаних у наявній Self-Contained збірці. Окремо збережено notices Runtime, WinForms і WPF та Microsoft .NET Library terms для готових Windows-компонентів. MIT для вихідного коду .NET не замінює умови поширення Windows-бінарних компонентів; модель описана в [документації .NET](https://github.com/dotnet/core/blob/main/license-information.md).
+
+Файли LICENSE і THIRD-PARTY-NOTICES.txt автоматично копіюються поряд із EXE при build/publish та залишаються зовнішніми у Single File. Передавайте обидва файли разом із застосунком. Після зміни залежностей або версії вбудованого .NET потрібно оновити відповідні ліцензії й notices; тестові пакети та сам SDK у дистрибутив не входять.
+
 ## Системні вимоги
 
 Цільові системи — Windows 10/11 x64. Конкретна редакція й версія ОС має відповідати [матриці підтримки .NET для Windows](https://learn.microsoft.com/en-us/dotnet/core/install/windows): підтримку Windows 10 Microsoft обмежує редакціями LTSC/Enterprise; сумісність з усіма випусками Windows 10 не підтверджена. Потрібні права на запис у власний LocalAppData й вибрану директорію, інтернет, системний браузер і Google-акаунт із дозволом на завантаження потрібних документів.
@@ -434,6 +442,8 @@ dotnet publish .\src\GoogleDriveDownloader\GoogleDriveDownloader.csproj `
 ```
 
 Результат публікації розташовуватиметься в `dist\win-x64`. Установлений .NET на цільовому комп'ютері не потрібен. Зовнішній `appsettings.json` потрібно залишити поруч із EXE.
+
+Ліцензійні файли LICENSE і THIRD-PARTY-NOTICES.txt також копіюються до dist автоматично. Поширюйте їх поруч із EXE; вони не вбудовуються всередину Single File. Склад передавання: GoogleDriveDownloader.exe, appsettings.json із порожніми credentials, README.md, LICENSE, THIRD-PARTY-NOTICES.txt.
 
 Потрібні Self-Contained і Single File для `win-x64`, без trimming/AOT; native libraries можуть розпаковуватися під час запуску. `appsettings.json` уже позначений як зовнішній: перевірте його наявність поряд із EXE і порожні credentials, додайте README. Не включайте токени, логи, приватні документи або тестову збірку. Результат треба окремо перевірити на Windows без установленого .NET/Office, зокрема коли директорія EXE недоступна для запису. [Механізм Single File у .NET](https://learn.microsoft.com/en-us/dotnet/core/deploying/single-file/overview).
 
